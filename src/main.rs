@@ -4,7 +4,7 @@ use clap::{App, Arg};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use hyper::rt::Future;
 use hyper::service::{make_service_fn, service_fn};
@@ -80,9 +80,9 @@ fn write_file(file_path: &Path, l_value: i32, r_value: i32) -> Result<(), Box<st
     Ok(write!(file, "{}/{}", l_value, r_value)?)
 }
 
-fn call(req: Request<Body>, file_path: Arc<String>) -> Result<Response<Body>, hyper::Error> {
-    let p = Arc::try_unwrap(file_path).unwrap();
-    let path = Path::new(&p);
+fn call(req: Request<Body>, file_path: Arc<Mutex<String>>) -> Result<Response<Body>, hyper::Error> {
+    let p = file_path.lock().unwrap();
+    let path = Path::new(&*p);
 
     println!("{:?}", req);
     let value = match read_file(&path) {
@@ -112,10 +112,11 @@ fn call(req: Request<Body>, file_path: Arc<String>) -> Result<Response<Body>, hy
 
 fn main() {
     let (port, file_path) = read_params();
+    let path_to_print = file_path.clone();
 
     let addr = ([127, 0, 0, 1], port).into();
-    let path_to_print = file_path.clone();
-    let path = Arc::new(file_path);
+    // Arc is used to safely share the path between threads.
+    let path = Arc::new(Mutex::new(file_path));
 
     let service = make_service_fn(move |_| {
         let path_clone = path.clone();
@@ -129,7 +130,7 @@ fn main() {
         .serve(service)
         .map_err(|e| eprintln!("server error: {:?}", e));
 
-    println!("Listening on {:?}, for file {}.", addr, path_to_print);
+    println!("Listening on {:?}, for file: {}", addr, path_to_print);
     hyper::rt::run(server);
 }
 
