@@ -6,4 +6,4 @@ edition = "2018"
 
 [dependencies]
 hyper = "0.12"
-futures = "*"
+clap = "2.33.0"
